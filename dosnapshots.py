@@ -1,110 +1,195 @@
+#!/usr/bin/env python3
+# dosnapshots.py
+# Version: 1.2
+# Author: drhdev
+# License: GPL v3
+#
+# Description:
+# This script manages snapshots for a specified DigitalOcean droplet, including creation, retention, and deletion.
+
 import subprocess
 import logging
+from logging.handlers import RotatingFileHandler
 import datetime
-from dateutil.relativedelta import relativedelta
+import os
+import sys
+from dotenv import load_dotenv
+import time
 
-# ============================ #
-# User Configuration Variables  #
-# ============================ #
+# Load environment variables from .env file
+load_dotenv()
 
-# DigitalOcean Droplet ID
-DROPLET_ID = "your_droplet_id"
+# User Configuration Variables
+DROPLET_ID = os.getenv("DROPLET_ID")
+DROPLET_NAME = os.getenv("DROPLET_NAME")
+DO_API_TOKEN = os.getenv("DO_API_TOKEN")
 
-# Name of the droplet (used as a prefix for snapshot names)
-DROPLET_NAME = "your_droplet_name"
+# Set the path to the doctl command-line tool
+# To find the path of doctl on your system, use: `which doctl`
+# To manually install the latest version of doctl, use:
+# `curl -sL https://github.com/digitalocean/doctl/releases/latest/download/doctl-$(uname -s)-$(uname -m) -o /usr/local/bin/doctl && chmod +x /usr/local/bin/doctl`
+# Other common paths include "/snap/bin/doctl" if installed via Snap
+DOCTL_PATH = "/usr/local/bin/doctl"  # Default path for manually installed doctl
 
-# DigitalOcean API Token
-DO_API_TOKEN = "your_api_token"
-
-# Full path to the doctl binary
-DOCTL_PATH = "/snap/bin/doctl"
-
-# Retention policies:
-# - KEEP_LAST_DAYS: Number of daily snapshots to keep. Example: if set to 3, keeps the last 3 daily snapshots.
-# - KEEP_WEEKLY: Number of weekly snapshots to keep. Example: if set to 4, keeps 4 weekly snapshots (one per week).
-# - KEEP_MONTHLY: Number of monthly snapshots to keep. Example: if set to 6, keeps 6 monthly snapshots (one per month).
-KEEP_LAST_DAYS = 3
-KEEP_WEEKLY = 4
-KEEP_MONTHLY = 6
-
-# Log file path
-LOG_FILE_PATH = "/var/log/dosnapshots.log"
-
-# Masked token for logging
-MASKED_TOKEN = DO_API_TOKEN[:6] + '...' + DO_API_TOKEN[-6:]
-
-# ============================ #
-#       End of Config          #
-# ============================ #
+RETAIN_LAST_SNAPSHOTS = 1  # Default to retain the last 1 snapshot
+DELETE_RETRIES = 3  # Number of retries for deletion
 
 # Set up logging
-logging.basicConfig(filename=LOG_FILE_PATH, level=logging.INFO, format='%(asctime)s %(message)s')
+base_dir = os.path.dirname(os.path.abspath(__file__))  # Directory where the script is located
+log_filename = os.path.join(base_dir, 'dosnapshots.log')
+logger = logging.getLogger('dosnapshots.py')
+logger.setLevel(logging.DEBUG)
+handler = RotatingFileHandler(log_filename, maxBytes=5 * 1024 * 1024, backupCount=5)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
-# Function to run shell commands
+# Check for verbose flag
+verbose = '-v' in sys.argv
+if verbose:
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+MASKED_TOKEN = DO_API_TOKEN[:6] + '...' + DO_API_TOKEN[-6:]
+
+def setup_environment():
+    """
+    Checks for required environment variables and sets up the necessary directories.
+    """
+    if not DROPLET_ID or not DROPLET_NAME or not DO_API_TOKEN:
+        error_exit("DROPLET_ID, DROPLET_NAME, and DO_API_TOKEN must be set in the environment.")
+
+def error_exit(message):
+    """
+    Logs the error message and exits the script.
+    """
+    logger.error(message)
+    sys.exit(1)
+
 def run_command(command):
+    """
+    Executes a shell command securely and logs the output.
+    """
     masked_command = command.replace(DO_API_TOKEN, MASKED_TOKEN)
-    logging.info(f"Starting command: {masked_command}")
+    logger.info(f"Running command: {masked_command}")
     try:
         env = {"DO_API_TOKEN": DO_API_TOKEN}
-        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        result = subprocess.run(command.split(), check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         stdout = result.stdout.decode().strip()
         stderr = result.stderr.decode().strip()
-        logging.info(f"Command '{masked_command}' executed successfully.")
-        logging.info(f"Return code: {result.returncode}")
-        logging.info(f"Output: {stdout}")
+        logger.info(f"Command executed successfully with output: {stdout}")
         if stderr:
-            logging.warning(f"Error output: {stderr}")
+            logger.warning(f"Command executed with errors: {stderr}")
         return stdout
     except subprocess.CalledProcessError as e:
-        logging.error(f"Error executing command '{masked_command}'")
-        logging.error(f"Return code: {e.returncode}")
-        logging.error(f"Output: {e.stdout.decode().strip()}")
-        logging.error(f"Error output: {e.stderr.decode().strip()}")
+        logger.error(f"Command failed with error: {e.stderr.decode().strip()}")
         return None
 
-# Function to create a snapshot
+def get_snapshots(droplet_id):
+    """
+    Retrieves snapshots associated with the specified droplet.
+    """
+    command = f"{DOCTL_PATH} compute snapshot list --resource droplet --format ID,Name,CreatedAt --no-header --access-token {DO_API_TOKEN}"
+    snapshots_output = run_command(command)
+    snapshots = []
+
+    if snapshots_output:
+        for line in snapshots_output.splitlines():
+            parts = line.split(maxsplit=2)
+            if len(parts) == 3 and (droplet_id in parts[1] or DROPLET_NAME in parts[1]):
+                snapshot_id, snapshot_name, created_at_str = parts
+                created_at = datetime.datetime.fromisoformat(created_at_str.replace('Z', '+00:00')).astimezone(datetime.timezone.utc)
+                snapshots.append({"id": snapshot_id, "name": snapshot_name, "created_at": created_at})
+                logger.debug(f"Snapshot found: {snapshot_name} (ID: {snapshot_id}) created at {created_at}")
+    else:
+        logger.error("No snapshots retrieved or an error occurred during retrieval.")
+
+    return snapshots
+
+def identify_snapshots_to_delete(snapshots):
+    """
+    Identifies which snapshots should be deleted based on the retention policy.
+    """
+    snapshots.sort(key=lambda x: x['created_at'], reverse=True)
+    to_delete = snapshots[RETAIN_LAST_SNAPSHOTS:]
+    logger.info(f"Snapshots identified for deletion: {[snap['name'] for snap in to_delete]}")
+    return to_delete
+
 def create_snapshot(droplet_id, name):
+    """
+    Creates a new snapshot for the specified droplet.
+    """
     timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     snapshot_name = f"{name}-{timestamp}"
     command = f"{DOCTL_PATH} compute droplet-action snapshot {droplet_id} --snapshot-name {snapshot_name} --wait --access-token {DO_API_TOKEN}"
     if run_command(command):
-        logging.info(f"Snapshot '{snapshot_name}' created for droplet {droplet_id}.")
+        logger.info(f"New snapshot created: {snapshot_name}")
+        return snapshot_name, timestamp
     else:
-        logging.error(f"Failed to create snapshot '{snapshot_name}' for droplet {droplet_id}.")
+        logger.error(f"Failed to create a new snapshot for droplet {droplet_id}")
+        return None, None
 
-# Function to delete old snapshots
-def delete_old_snapshots(droplet_id, keep_last_days=3, keep_weekly=4, keep_monthly=6):
-    command = f"{DOCTL_PATH} compute snapshot list --resource droplet --format ID,Name,CreatedAt,ResourceID --no-header --access-token {DO_API_TOKEN}"
-    snapshots = run_command(command)
-    if snapshots:
-        snapshots = [line.split() for line in snapshots.split('\n') if line.split()[-1] == str(droplet_id)]
-        snapshots = [{"id": s[0], "name": s[1], "created_at": datetime.datetime.fromisoformat(s[2].split('+')[0])} for s in snapshots]
-
-        now = datetime.datetime.now()
-
-        to_keep = []
-        for snap in snapshots:
-            age = now - snap["created_at"]
-            if age <= datetime.timedelta(days=keep_last_days):
-                to_keep.append(snap)
-            elif age <= datetime.timedelta(days=keep_weekly*7):
-                to_keep.append(snap)
-            elif age <= relativedelta(months=+keep_monthly):
-                to_keep.append(snap)
-
-        to_delete = [snap for snap in snapshots if snap not in to_keep]
-
-        for snap in to_delete:
+def delete_snapshots(snapshots):
+    """
+    Deletes the specified snapshots, with retry logic for robustness.
+    """
+    for snap in snapshots:
+        for attempt in range(DELETE_RETRIES):
             command = f"{DOCTL_PATH} compute snapshot delete {snap['id']} --force --access-token {DO_API_TOKEN}"
-            if run_command(command):
-                logging.info(f"Deleted old snapshot '{snap['name']}'.")
+            result = run_command(command)
+            if result is not None:
+                if "404" in result:
+                    logger.warning(f"Snapshot not found (likely already deleted): {snap['name']}. Treating as successful deletion.")
+                    break
+                else:
+                    logger.info(f"Snapshot deleted: {snap['name']}")
+                    break
             else:
-                logging.error(f"Failed to delete snapshot '{snap['name']}'.")
+                logger.error(f"Attempt {attempt + 1} failed to delete snapshot: {snap['name']}")
+                if attempt < DELETE_RETRIES - 1:
+                    time.sleep(5)  # Wait before retrying
+                else:
+                    logger.error(f"Failed to delete snapshot after {DELETE_RETRIES} attempts: {snap['name']}")
+
+def write_final_status(snapshot_name, timestamp, total_snapshots, status):
+    """
+    Writes the final status of the script to the log for monitoring purposes.
+    Format: FINAL_STATUS | STATUS | HOSTNAME | TIMESTAMP | SNAPSHOT_NAME | TOTAL_SNAPSHOTS
+    """
+    hostname = os.uname().nodename
+    final_status_message = f"FINAL_STATUS | {status.upper()} | {hostname} | {timestamp} | {snapshot_name} | {total_snapshots} snapshots exist"
+    logger.info(final_status_message)
+
+def main():
+    """
+    Main function that manages the DigitalOcean snapshots.
+    """
+    logger.info("Starting snapshot management process...")
+    
+    # Set up environment and check necessary variables
+    setup_environment()
+
+    # Retrieve existing snapshots
+    snapshots = get_snapshots(DROPLET_ID)
+    
+    # Identify snapshots to delete
+    to_delete = identify_snapshots_to_delete(snapshots)
+    
+    # Create a new snapshot
+    snapshot_name, snapshot_time = create_snapshot(DROPLET_ID, DROPLET_NAME)
+    
+    # Delete old snapshots
+    delete_snapshots(to_delete)
+    
+    # Write final status to the log
+    if snapshot_name and snapshot_time:
+        write_final_status(snapshot_name, snapshot_time, len(snapshots), "success")
+    else:
+        write_final_status("none", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), len(snapshots), "failure")
+    
+    logger.info("Snapshot management process completed.")
 
 if __name__ == "__main__":
-    if not DROPLET_ID or not DROPLET_NAME or not DO_API_TOKEN:
-        logging.error("DROPLET_ID, DROPLET_NAME, and DO_API_TOKEN must be set.")
-        exit(1)
+    main()
 
-    create_snapshot(DROPLET_ID, DROPLET_NAME)
-    delete_old_snapshots(DROPLET_ID, KEEP_LAST_DAYS, KEEP_WEEKLY, KEEP_MONTHLY)
