@@ -28,6 +28,10 @@ The script is highly configurable through environment variables set in the `.env
 - **DROPLET_NAME**: A prefix for snapshot names to easily identify them.
 - **DO_API_TOKEN**: The DigitalOcean API token used for authentication with the `doctl` tool.
 
+### API Token Scope
+
+Ensure that your API token has the correct scope with sufficient permissions to create, list, and delete snapshots. Instructions on how to set up personal access tokens with the required permissions can be found in the DigitalOcean documentation: [Create Personal Access Token](https://docs.digitalocean.com/reference/api/create-personal-access-token/).
+
 ### Retention Policy
 
 - **RETAIN_LAST_SNAPSHOTS**: Number of recent snapshots to retain.
@@ -39,8 +43,7 @@ The script is highly configurable through environment variables set in the `.env
 
 ### Path to `doctl`
 
-- The full path to the `doctl` binary should be configured correctly. If installed manually, the path is usually `/usr/local/bin/doctl`. 
-- If installed via Snap, the path might be `/snap/bin/doctl`.
+- The full path to the `doctl` binary should be configured correctly, usually `/usr/local/bin/doctl` if installed manually.
 - To manually install `doctl`, use the command:
   ```bash
   curl -sL https://github.com/digitalocean/doctl/releases/latest/download/doctl-$(uname -s)-$(uname -m) -o /usr/local/bin/doctl && chmod +x /usr/local/bin/doctl
@@ -48,25 +51,20 @@ The script is highly configurable through environment variables set in the `.env
 
 ## Usage Instructions
 
-### Install `doctl`
+### Clone the Repository
+
+Clone the `dosnapshots` repository to your home directory:
 
 ```bash
-sudo apt update
-sudo apt install snapd
-sudo snap install doctl
-doctl version
-which doctl
-```
-
-### Create and Configure the Project Directory
-
-```bash
-sudo mkdir -p /var/python/dosnapshots
-sudo chown $USER:$USER /var/python/dosnapshots
-cd /var/python/dosnapshots
+mkdir -p /home/user/python
+cd /home/user/python
+git clone https://github.com/drhdev/dosnapshots.git
+cd dosnapshots
 ```
 
 ### Setup a Virtual Environment
+
+Create and activate a virtual environment:
 
 ```bash
 python3 -m venv venv
@@ -74,34 +72,46 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Copy the Script
+### Configure Environment Variables
 
-Place the `dosnapshots.py` script in `/var/python/dosnapshots`.
+Create a `.env` file in the `/home/user/python/dosnapshots` directory with your DigitalOcean configuration:
+
+```plaintext
+# .env file
+DROPLET_ID=your_droplet_id
+DROPLET_NAME=your_droplet_name
+DO_API_TOKEN=your_api_token
+```
 
 ### Test the Script Manually on the Command Line
 
+Activate the virtual environment and run the script:
+
 ```bash
-source /var/python/dosnapshots/venv/bin/activate
-python /var/python/dosnapshots/dosnapshots.py
+source /home/user/python/dosnapshots/venv/bin/activate
+python /home/user/python/dosnapshots/dosnapshots.py
 ```
 
 ### Check Logs
 
+Logs are stored in the same directory as the script. You can view them with:
+
 ```bash
-cat /var/python/dosnapshots/dosnapshots.log
+cat /home/user/python/dosnapshots/dosnapshots.log
 ```
 
 ### Set Up a Cron Job
+
+Edit your crontab to schedule the script to run at a specific time (e.g., daily at 2 AM):
 
 ```bash
 crontab -e
 ```
 
-Add the following line to run the script daily at 2 AM:
+Add the following line:
 
 ```bash
-0 2 * * * /bin/bash -c 'source /var/python/dosnapshots/venv/bin/activate && python /var/python/dosnapshots/dosnapshots.py'
+0 2 * * * /bin/bash -c 'source /home/user/python/dosnapshots/venv/bin/activate && python /home/user/python/dosnapshots/dosnapshots.py'
 ```
 
 By following these steps and configurations, `dosnapshots.py` helps maintain a systematic backup strategy for your DigitalOcean Droplets, ensuring data is securely and efficiently managed.
-
