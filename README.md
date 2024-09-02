@@ -48,6 +48,12 @@ Ensure that your API token has the correct scope with sufficient permissions to 
   ```bash
   curl -sL https://github.com/digitalocean/doctl/releases/latest/download/doctl-$(uname -s)-$(uname -m) -o /usr/local/bin/doctl && chmod +x /usr/local/bin/doctl
   ```
+- To find out where `doctl` is installed on your system, you can use the following command in the terminal:
+  ```bash
+  which doctl
+  ```
+
+This command will display the path to the `doctl` executable if it is available in your system's PATH.
 
 ## Usage Instructions
 
