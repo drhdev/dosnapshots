@@ -1,85 +1,107 @@
-### Summary of `dosnapshots.py`
+# dosnapshots
 
-`dosnapshots.py` is a Python script designed to manage DigitalOcean snapshots for a specified Ubuntu Droplet. 
+`dosnapshots.py` is a Python script designed to manage DigitalOcean snapshots for a specified Droplet. The script automates the creation and deletion of snapshots based on a configurable retention policy, ensuring an efficient and organized backup system.
 
-The script automates the creation and deletion of snapshots based on a configurable retention policy, ensuring that the user maintains an efficient and organized backup system.
+## Key Features
 
-#### Key Features
+### Snapshot Creation
 
-1. **Snapshot Creation**:
-   - The script creates a snapshot of the specified DigitalOcean Droplet using the `doctl` command-line tool.
-   - Snapshots are named with a specified prefix followed by a timestamp for easy identification.
+- The script creates a snapshot of the specified DigitalOcean Droplet using the `doctl` command-line tool.
+- Snapshots are named with the droplet name followed by a timestamp for easy identification.
+  
+### Snapshot Retention
 
-2. **Snapshot Retention**:
-   - The script enforces a retention policy that retains:
-     - A specified number of recent daily snapshots.
-     - A specified number of weekly snapshots.
-     - A specified number of monthly snapshots.
-   - Older snapshots that do not fit within the retention policy are automatically deleted.
+- The script enforces a retention policy that retains a specified number of recent snapshots.
+- Older snapshots that do not fit within the retention policy are automatically deleted.
 
-3. **Detailed Logging**:
-   - Logs detailed information about each command executed, including success messages and any errors encountered.
-   - Ensures sensitive information, like the DigitalOcean API token, is masked in the logs.
+### Detailed Logging
 
-#### Configuration
+- Logs detailed information about each command executed, including success messages and any errors encountered.
+- Ensures sensitive information, such as the DigitalOcean API token, is masked in the logs.
+- Final status messages provide a summary of each run, including the hostname, timestamp, snapshot name, and the total number of snapshots retained.
 
-The script is highly configurable through variables set at the beginning:
+## Configuration
 
-- **Droplet ID**: The unique identifier of the DigitalOcean Droplet to manage.
-- **Droplet Name**: A prefix for snapshot names to easily identify them.
-- **API Token**: The DigitalOcean API token, used for authentication with the `doctl` tool.
-- **Retention Policies**:
-  - `KEEP_LAST_DAYS`: Number of daily snapshots to retain.
-  - `KEEP_WEEKLY`: Number of weekly snapshots to retain.
-  - `KEEP_MONTHLY`: Number of monthly snapshots to retain.
-- **Log File Path**: The file path where logs are stored.
-- **Path to `doctl`**: The full path to the `doctl` binary, ensuring it is correctly located and executed.
+The script is highly configurable through environment variables set in the `.env` file:
 
-#### Usage Instructions
+- **DROPLET_ID**: The unique identifier of the DigitalOcean Droplet to manage.
+- **DROPLET_NAME**: A prefix for snapshot names to easily identify them.
+- **DO_API_TOKEN**: The DigitalOcean API token used for authentication with the `doctl` tool.
 
-1. **Install `doctl`**:
-   ```bash
-   sudo apt update
-   sudo apt install snapd
-   sudo snap install doctl
-   doctl version
-   which doctl
-   ```
+### Retention Policy
 
-2. **Create and Configure the Project Directory**:
-   ```bash
-   sudo mkdir -p /var/python/dosnapshots
-   sudo chown $USER:$USER /var/python/dosnapshots
-   cd /var/python/dosnapshots
-   ```
+- **RETAIN_LAST_SNAPSHOTS**: Number of recent snapshots to retain.
+- **DELETE_RETRIES**: Number of retries when attempting to delete a snapshot.
 
-3. **Setup a Virtual Environment**:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install python-dateutil
-   ```
+### Log File
 
-4. **Copy the Script**:
-   Place the `dosnapshots.py` script in `/var/python/dosnapshots`.
+- Logs are stored in the same directory as the script, with detailed logging of every operation.
 
-5. **Test the Script manually on the Command Line**:
-   ```bash
-   sudo /bin/bash -c 'source /var/python/dosnapshots/venv/bin/activate && python /var/python/dosnapshots/dosnapshots.py'
-   ```
+### Path to `doctl`
 
-6. **Check Logs**:
-   ```bash
-   sudo cat /var/log/dosnapshots.log
-   ```
+- The full path to the `doctl` binary should be configured correctly. If installed manually, the path is usually `/usr/local/bin/doctl`. 
+- If installed via Snap, the path might be `/snap/bin/doctl`.
+- To manually install `doctl`, use the command:
+  ```bash
+  curl -sL https://github.com/digitalocean/doctl/releases/latest/download/doctl-$(uname -s)-$(uname -m) -o /usr/local/bin/doctl && chmod +x /usr/local/bin/doctl
+  ```
 
-7. **Set Up a Cron Job**:
-   ```bash
-   sudo crontab -e
-   ```
-   Add the following line:
-   ```bash
-   0 2 * * * /bin/bash -c 'source /var/python/dosnapshots/venv/bin/activate && python /var/python/dosnapshots/dosnapshots.py'
-   ```
+## Usage Instructions
+
+### Install `doctl`
+
+```bash
+sudo apt update
+sudo apt install snapd
+sudo snap install doctl
+doctl version
+which doctl
+```
+
+### Create and Configure the Project Directory
+
+```bash
+sudo mkdir -p /var/python/dosnapshots
+sudo chown $USER:$USER /var/python/dosnapshots
+cd /var/python/dosnapshots
+```
+
+### Setup a Virtual Environment
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Copy the Script
+
+Place the `dosnapshots.py` script in `/var/python/dosnapshots`.
+
+### Test the Script Manually on the Command Line
+
+```bash
+source /var/python/dosnapshots/venv/bin/activate
+python /var/python/dosnapshots/dosnapshots.py
+```
+
+### Check Logs
+
+```bash
+cat /var/python/dosnapshots/dosnapshots.log
+```
+
+### Set Up a Cron Job
+
+```bash
+crontab -e
+```
+
+Add the following line to run the script daily at 2 AM:
+
+```bash
+0 2 * * * /bin/bash -c 'source /var/python/dosnapshots/venv/bin/activate && python /var/python/dosnapshots/dosnapshots.py'
+```
 
 By following these steps and configurations, `dosnapshots.py` helps maintain a systematic backup strategy for your DigitalOcean Droplets, ensuring data is securely and efficiently managed.
+
