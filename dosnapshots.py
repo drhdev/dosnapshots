@@ -31,7 +31,7 @@ DO_API_TOKEN = os.getenv("DO_API_TOKEN")
 # Other common paths include "/snap/bin/doctl" if installed via Snap
 DOCTL_PATH = "/usr/local/bin/doctl"  # Default path for manually installed doctl
 
-RETAIN_LAST_SNAPSHOTS = 1  # Default to retain the last 1 snapshot
+RETAIN_LAST_SNAPSHOTS = 0  # Default to retain the last 1 snapshot
 DELETE_RETRIES = 3  # Number of retries for deletion
 
 # Set up logging
