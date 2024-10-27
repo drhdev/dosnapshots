@@ -46,7 +46,8 @@ Ensure that your API token has the correct scope with sufficient permissions to 
 - The full path to the `doctl` binary should be configured correctly, usually `/usr/local/bin/doctl` if installed manually.
 - To manually install `doctl`, use the command:
   ```bash
-  sudo curl -sL https://github.com/digitalocean/doctl/releases/latest/download/doctl-linux-amd64 -o /usr/local/bin/doctl
+  ~~sudo curl -sL https://github.com/digitalocean/doctl/releases/latest/download/doctl-linux-amd64 -o /usr/local/bin/doctl~~
+  sudo curl -sL https://github.com/digitalocean/doctl/releases/download/v1.117.0/doctl-1.117.0-linux-amd64.tar.gz -o /usr/local/bin/doctl
   ```
 - Make `doctl` executable:
   ```bash
