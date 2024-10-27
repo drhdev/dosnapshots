@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # dosnapshots.py
-# Version: 1.2
+# Version: 1.3
 # Author: drhdev
 # License: GPL v3
 #
@@ -24,12 +24,26 @@ DROPLET_ID = os.getenv("DROPLET_ID")
 DROPLET_NAME = os.getenv("DROPLET_NAME")
 DO_API_TOKEN = os.getenv("DO_API_TOKEN")
 
-# Set the path to the doctl command-line tool
-# To find the path of doctl on your system, use: `which doctl`
-# To manually install the latest version of doctl, use:
-# `curl -sL https://github.com/digitalocean/doctl/releases/latest/download/doctl-$(uname -s)-$(uname -m) -o /usr/local/bin/doctl && chmod +x /usr/local/bin/doctl`
-# Other common paths include "/snap/bin/doctl" if installed via Snap
-DOCTL_PATH = "/usr/local/bin/doctl"  # Default path for manually installed doctl
+# Detect the path of the doctl command-line tool
+def get_doctl_path():
+    try:
+        # Run 'which doctl' to find all doctl paths
+        doctl_paths = subprocess.run("which -a doctl", shell=True, check=True, stdout=subprocess.PIPE).stdout.decode().strip().split('\n')
+        
+        # If multiple paths, sort by modification time and select the latest
+        if len(doctl_paths) > 1:
+            doctl_paths = sorted(doctl_paths, key=lambda path: os.path.getmtime(path), reverse=True)
+        
+        return doctl_paths[0] if doctl_paths else None
+    except subprocess.CalledProcessError:
+        return None
+
+DOCTL_PATH = get_doctl_path() or "/usr/local/bin/doctl"  # Fallback to a default path if detection fails
+
+# Check if doctl path was detected
+if not DOCTL_PATH or not os.path.exists(DOCTL_PATH):
+    print("Error: doctl command not found. Please ensure it is installed and accessible.")
+    sys.exit(1)
 
 RETAIN_LAST_SNAPSHOTS = 0  # Default to retain the last 1 snapshot
 DELETE_RETRIES = 3  # Number of retries for deletion
@@ -74,7 +88,11 @@ def run_command(command):
     masked_command = command.replace(DO_API_TOKEN, MASKED_TOKEN)
     logger.info(f"Running command: {masked_command}")
     try:
-        env = {"DO_API_TOKEN": DO_API_TOKEN}
+        env = {
+            "DO_API_TOKEN": DO_API_TOKEN,
+            "HOME": os.path.expanduser("~"),  # Set HOME to the current user's home directory
+            "XDG_CONFIG_HOME": os.path.expanduser("~/.config")  # Optionally set XDG_CONFIG_HOME
+        }
         result = subprocess.run(command.split(), check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         stdout = result.stdout.decode().strip()
         stderr = result.stderr.decode().strip()
@@ -83,7 +101,11 @@ def run_command(command):
             logger.warning(f"Command executed with errors: {stderr}")
         return stdout
     except subprocess.CalledProcessError as e:
-        logger.error(f"Command failed with error: {e.stderr.decode().strip()}")
+        stdout = e.stdout.decode().strip() if e.stdout else ""
+        stderr = e.stderr.decode().strip() if e.stderr else ""
+        logger.error(f"Command failed with error: {stderr}")
+        logger.debug(f"Command failed with output: {stdout}")
+        logger.debug(f"Full command that failed: {masked_command}")
         return None
 
 def get_snapshots(droplet_id):
