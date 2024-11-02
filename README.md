@@ -130,7 +130,7 @@ crontab -e
 Add the following line:
 
 ```bash
-0 2 * * * /bin/bash -c 'source /home/user/python/dosnapshots/venv/bin/activate && python /home/user/python/dosnapshots/dosnapshots.py'
+0 2 * * * /bin/bash -c 'source /home/user/python/dosnapshots/venv/bin/activate && python /home/user/python/dosnapshots/dosnapshots.py' > /home/user/python/dosnapshots/dosnapshots.log 2>&1
 ```
 
 By following these steps and configurations, `dosnapshots.py` helps maintain a systematic backup strategy for your DigitalOcean Droplets, ensuring data is securely and efficiently managed.
